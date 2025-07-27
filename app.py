@@ -1,0 +1,98 @@
+import os
+import json
+import base64
+import requests
+import boto3
+import streamlit as st
+from jinja2 import Template
+from tempfile import NamedTemporaryFile
+
+# ===== Azure GPT-4 Vision Setup =====
+AZURE_API_KEY = st.secrets["AZURE_API_KEY"]
+AZURE_ENDPOINT = st.secrets["AZURE_ENDPOINT"]
+AZURE_DEPLOYMENT = st.secrets["AZURE_DEPLOYMENT"]
+AZURE_API_VERSION = st.secrets["AZURE_API_VERSION"]
+
+# ===== Pexels Setup =====
+PEXELS_API_KEY = st.secrets["PEXELS_API_KEY"]
+
+def search_pexels_image(query, index=0):
+    headers = {"Authorization": PEXELS_API_KEY}
+    params = {"query": query, "per_page": index + 1, "orientation": "portrait"}
+    res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=params)
+    photos = res.json().get("photos", [])
+    if len(photos) > index:
+        return photos[index]["src"]["original"]
+    elif photos:
+        return photos[0]["src"]["original"]
+    return ""
+
+def analyze_image_with_gpt(image_bytes, context_prompt):
+    image_base64 = base64.b64encode(image_bytes).decode()
+    endpoint = f"{AZURE_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT}/chat/completions?api-version={AZURE_API_VERSION}"
+    headers = {
+        "api-key": AZURE_API_KEY,
+        "Content-Type": "application/json"
+    }
+    messages = [
+        {"role": "system", "content": [{"type": "text", "text": context_prompt}]},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Generate 4 MCQ questions with 4 options each, correct_index, a title, cover_heading, cover_subtext, and result text. Return ONLY valid JSON."},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+        ]}
+    ]
+    payload = {"messages": messages, "temperature": 0.7, "max_tokens": 1500}
+    res = requests.post(endpoint, headers=headers, json=payload)
+    result_content = res.json()["choices"][0]["message"]["content"]
+    return json.loads(result_content)
+
+def render_quiz_html(data, image_urls, template_str):
+    template = Template(template_str)
+    html_data = {
+        "pagetitle": data.get("title", "Untitled Quiz"),
+        "storytitle": data.get("title", "Untitled Quiz"),
+        "typeofquiz": "Auto Quiz",
+        "potraitcoverurl": image_urls[0],
+        "s1image1": image_urls[0],
+        "s1title1": data.get("cover_heading", "Test Your Knowledge!"),
+        "s1text1": data.get("cover_subtext", "Let's see how well you can guess."),
+        "results_bg_image": image_urls[0],
+        "results_prompt_text": data.get("results_text", "You've completed the quiz!"),
+        "results1_image": image_urls[1], "results1_category": "Expert", "results1_text": "Incredible! You're a quiz master.",
+        "results2_image": image_urls[2], "results2_category": "Smart Thinker", "results2_text": "Nice! You did well.",
+        "results3_image": image_urls[3], "results3_category": "Explorer", "results3_text": "You're learning fast!",
+        "results4_image": image_urls[4], "results4_category": "Beginner", "results4_text": "Keep trying, you'll get there!"
+    }
+    for i, q in enumerate(data.get("questions", []), start=2):
+        html_data[f"s{i}image1"] = image_urls[i - 1] if i - 1 < len(image_urls) else image_urls[0]
+        html_data[f"s{i}question1"] = q.get("question", f"Question {i - 1}")
+        for j in range(1, 5):
+            html_data[f"s{i}option{j}"] = q.get("options", [f"Option {k}" for k in range(1, 5)])[j - 1]
+
+    return template.render(**html_data)
+
+# ===== Streamlit UI =====
+st.title("🧠 Image-based Quiz Generator")
+
+uploaded_image = st.file_uploader("📤 Upload a quiz image", type=["jpg", "jpeg", "png"])
+uploaded_template = st.file_uploader("📄 Upload AMP quiz template", type="html")
+
+if uploaded_image and uploaded_template:
+    context_prompt = "You are a visual quiz assistant. Generate quiz from this image with 4 questions and results."
+    image_bytes = uploaded_image.read()
+    template_str = uploaded_template.read().decode("utf-8")
+
+    st.info("🧠 Analyzing image with GPT-4 Vision...")
+    quiz_data = analyze_image_with_gpt(image_bytes, context_prompt)
+    st.json(quiz_data)
+
+    st.info("🖼️ Fetching images from Pexels...")
+    image_urls = [search_pexels_image(quiz_data['title'], i) for i in range(5)]
+
+    st.info("🧾 Rendering final HTML...")
+    final_html = render_quiz_html(quiz_data, image_urls, template_str)
+
+    with NamedTemporaryFile(delete=False, suffix=".html", mode="w", encoding="utf-8") as tmpfile:
+        tmpfile.write(final_html)
+        st.success("✅ Quiz HTML generated!")
+        st.download_button("📥 Download HTML", data=final_html, file_name="final_quiz.html", mime="text/html")
