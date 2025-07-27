@@ -21,7 +21,6 @@ AWS_SECRET_KEY = st.secrets["AWS_SECRET_KEY"]
 AWS_REGION     = st.secrets["AWS_REGION"]
 AWS_BUCKET     = st.secrets["AWS_BUCKET"]
 S3_PREFIX      = "suvichaarstories"
-
 DISPLAY_BASE   = "https://suvichaar.org/stories"  # <-- for final output link
 
 # ===== 🔧 Slug and URL generator =====
@@ -33,14 +32,12 @@ def generate_slug_and_urls():
     return slug_full, s3_key, display_url
 
 # ===== 🔍 Pexels image search =====
-def search_pexels_image(query, index=0):
+def search_pexels_image(query):
     headers = {"Authorization": PEXELS_API_KEY}
-    params = {"query": query, "per_page": index + 1, "orientation": "portrait"}
+    params = {"query": query, "per_page": 1, "orientation": "portrait"}
     res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=params)
     photos = res.json().get("photos", [])
-    if len(photos) > index:
-        return photos[index]["src"]["original"]
-    elif photos:
+    if photos:
         return photos[0]["src"]["original"]
     return "https://via.placeholder.com/720x1280?text=No+Image"
 
@@ -52,11 +49,16 @@ def analyze_image_with_gpt(image_bytes, context_prompt):
     messages = [
         {"role": "system", "content": [{"type": "text", "text": context_prompt}]},
         {"role": "user", "content": [
-            {"type": "text", "text": "Generate 4 MCQ questions with 4 options each, correct_index, a title, cover_heading, cover_subtext, and result text. Return ONLY valid JSON. No extra text."},
+            {"type": "text", "text": (
+                "Generate 5 MCQ questions with 4 options each. "
+                "Return the correct answer for each as a 'correct_index' (0-based index) in each question. "
+                "Also return a title, cover_heading, cover_subtext, and result text. "
+                "Return ONLY valid JSON. No extra text."
+            )},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
         ]}
     ]
-    payload = {"messages": messages, "temperature": 0.7, "max_tokens": 1500}
+    payload = {"messages": messages, "temperature": 0.7, "max_tokens": 1800}
     res = requests.post(endpoint, headers=headers, json=payload)
 
     if res.status_code != 200:
@@ -95,6 +97,8 @@ def render_quiz_html(data, image_urls, template_str):
         html_data[f"s{i}question1"] = q.get("question", f"Question {i - 1}")
         for j in range(1, 5):
             html_data[f"s{i}option{j}"] = q.get("options", [f"Option {k}" for k in range(1, 5)])[j - 1]
+        # Optionally: add correct answer to HTML as comment
+        html_data[f"s{i}correct_index"] = q.get("correct_index", -1)
     return template.render(**html_data)
 
 # ===== ☁️ Upload to S3 =====
@@ -116,7 +120,9 @@ uploaded_image = st.file_uploader("📤 Upload a quiz image", type=["jpg", "jpeg
 uploaded_template = st.file_uploader("📄 Upload AMP quiz template", type="html")
 
 if uploaded_image and uploaded_template:
-    context_prompt = "You are a visual quiz assistant. Generate quiz from this image with 4 questions and results."
+    context_prompt = (
+        "You are a visual quiz assistant. Generate a quiz from this image with 5 MCQ questions and results."
+    )
     image_bytes = uploaded_image.read()
     template_str = uploaded_template.read().decode("utf-8")
 
@@ -126,10 +132,30 @@ if uploaded_image and uploaded_template:
         st.stop()
 
     st.json(quiz_data)
+    
+    quiz_topic = quiz_data.get("title") or quiz_data.get("cover_heading") or "quiz"
 
-    st.info("🖼️ Fetching images from Pexels...")
-    query = quiz_data.get("title", "quiz") or "quiz"
-    image_urls = [search_pexels_image(query, i) for i in range(5)]
+    st.info("🖼️ Fetching topic-oriented images from Pexels...")
+    image_urls = []
+    image_urls.append(search_pexels_image(quiz_topic))  # Cover
+    for i, q in enumerate(quiz_data.get("questions", [])):
+        img = search_pexels_image(q.get("question", quiz_topic))
+        image_urls.append(img)
+    while len(image_urls) < 5:
+        image_urls.append(image_urls[0])
+
+    # ===== Show Questions, Options, and Correct Answers =====
+    st.markdown("### 📝 Questions and Correct Answers")
+    for idx, q in enumerate(quiz_data.get("questions", []), 1):
+        st.markdown(f"**Q{idx}: {q.get('question','')}**")
+        options = q.get('options', [])
+        correct_idx = q.get('correct_index', -1)
+        for o_idx, opt in enumerate(options):
+            marker = "✅" if o_idx == correct_idx else ""
+            st.write(f"{chr(65+o_idx)}. {opt} {marker}")
+        if correct_idx != -1:
+            st.success(f"Correct Answer: {options[correct_idx]}")
+        st.write("---")
 
     st.info("🧾 Rendering final HTML...")
     final_html = render_quiz_html(quiz_data, image_urls, template_str)
