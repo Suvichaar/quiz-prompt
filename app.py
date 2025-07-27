@@ -24,6 +24,12 @@ S3_PREFIX      = "suvichaarstories"
 
 DISPLAY_BASE   = "https://suvichaar.org/stories"  # <-- for final output link
 
+# ===== 📚 Educational Keywords =====
+QUIZ_KEYWORDS = [
+    "BOOKS", "PEN", "NOTES", "STUDY", "LIBRARY", "QUIZ", "WINNER",
+    "PENCIL", "EDUCATION", "NOTEBOOK", "EXAM", "PAPER"
+]
+
 # ===== 🔧 Slug and URL generator =====
 def generate_slug_and_urls():
     nano = ''.join(random.choices(string.ascii_letters + string.digits, k=10)) + '_G'
@@ -106,7 +112,6 @@ def render_quiz_html(data, image_urls, template_str):
                 html_data[f"s{i}option{j}attr"] = ""
     return template.render(**html_data)
 
-
 # ===== ☁️ Upload to S3 =====
 def upload_to_s3(content_str, s3_key):
     s3 = boto3.client("s3",
@@ -137,9 +142,12 @@ if uploaded_image and uploaded_template:
 
     st.json(quiz_data)
 
-    st.info("🖼️ Fetching images from Pexels...")
-    query = quiz_data.get("title", "quiz") or "quiz"
-    image_urls = [search_pexels_image(query, i) for i in range(5)]
+    st.info("🖼️ Fetching images from Pexels using educational keywords...")
+
+    # Always select 5 unique keywords randomly for images
+    selected_keywords = random.sample(QUIZ_KEYWORDS, k=5)
+    st.write("🔑 Image keywords selected:", selected_keywords)
+    image_urls = [search_pexels_image(keyword, 0) for keyword in selected_keywords]
 
     st.info("🧾 Rendering final HTML...")
     final_html = render_quiz_html(quiz_data, image_urls, template_str)
