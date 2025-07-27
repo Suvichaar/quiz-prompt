@@ -20,7 +20,7 @@ AWS_ACCESS_KEY = st.secrets["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY = st.secrets["AWS_SECRET_KEY"]
 AWS_REGION     = st.secrets["AWS_REGION"]
 AWS_BUCKET     = st.secrets["AWS_BUCKET"]
-S3_PREFIX      = "suvichaarapp"
+S3_PREFIX      = "suvichaarstories"
 
 DISPLAY_BASE   = "https://suvichaar.org/stories"  # <-- for final output link
 
