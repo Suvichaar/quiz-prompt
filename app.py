@@ -1,12 +1,13 @@
 import os
 import json
 import base64
+import random
+import string
 import requests
 import boto3
 import streamlit as st
 from jinja2 import Template
 from tempfile import NamedTemporaryFile
-from datetime import datetime
 
 # ===== 🔐 Secrets from st.secrets =====
 AZURE_API_KEY     = st.secrets["AZURE_API_KEY"]
@@ -19,7 +20,18 @@ AWS_ACCESS_KEY = st.secrets["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY = st.secrets["AWS_SECRET_KEY"]
 AWS_REGION     = st.secrets["AWS_REGION"]
 AWS_BUCKET     = st.secrets["AWS_BUCKET"]
-CDN_BASE       = "https://stories.suvichaar.org"  # fixed as per your CDN
+S3_PREFIX      = "suvichaarapp"
+CDN_BASE       = "https://stories.suvichaar.org"
+
+# ===== 🔧 Slug and URL generator =====
+def generate_slug_and_urls(title):
+    base = ''.join(c for c in title.lower().replace(" ", "-") if c in string.ascii_lowercase + string.digits + '-')
+    slug_id = ''.join(random.choices(string.ascii_letters + string.digits + '_-', k=10)) + '_G'
+    slug_full = f"generated-quiz_{slug_id}"
+    s3_key = f"{S3_PREFIX}/{slug_full}.html"
+    cdn_url = f"{CDN_BASE}/{s3_key}"
+    display_url = f"{CDN_BASE}/{S3_PREFIX}/{slug_full}"
+    return slug_full, s3_key, cdn_url, display_url
 
 # ===== 🔍 Pexels image search =====
 def search_pexels_image(query, index=0):
@@ -46,8 +58,8 @@ def analyze_image_with_gpt(image_bytes, context_prompt):
         ]}
     ]
     payload = {"messages": messages, "temperature": 0.7, "max_tokens": 1500}
-
     res = requests.post(endpoint, headers=headers, json=payload)
+
     if res.status_code != 200:
         st.error(f"❌ Azure API Error {res.status_code}")
         st.text(res.text)
@@ -56,10 +68,9 @@ def analyze_image_with_gpt(image_bytes, context_prompt):
     try:
         content = res.json()["choices"][0]["message"]["content"]
         return json.loads(content)
-    except Exception as e:
+    except Exception:
         st.error("❌ Failed to parse GPT response as JSON.")
-        st.text("🔎 Raw GPT output:")
-        st.code(res.text, language="json")
+        st.code(res.text)
         return None
 
 # ===== 🧾 HTML rendering =====
@@ -85,27 +96,19 @@ def render_quiz_html(data, image_urls, template_str):
         html_data[f"s{i}question1"] = q.get("question", f"Question {i - 1}")
         for j in range(1, 5):
             html_data[f"s{i}option{j}"] = q.get("options", [f"Option {k}" for k in range(1, 5)])[j - 1]
-
     return template.render(**html_data)
 
-# ===== ☁️ Upload to S3 with timestamped filename =====
-def upload_to_s3(content_str, folder="suvichaarapp"):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"generated_quiz_{timestamp}.html"
-    s3_key = f"{folder}/{filename}"
-
+# ===== ☁️ Upload to S3 =====
+def upload_to_s3(content_str, s3_key):
     s3 = boto3.client("s3",
         aws_access_key_id=AWS_ACCESS_KEY,
         aws_secret_access_key=AWS_SECRET_KEY,
         region_name=AWS_REGION
     )
-
     with NamedTemporaryFile(delete=False, suffix=".html", mode="w", encoding="utf-8") as tmp:
         tmp.write(content_str)
         tmp.flush()
         s3.upload_file(tmp.name, AWS_BUCKET, s3_key)
-
-    return f"{CDN_BASE}/{s3_key}", filename
 
 # ===== Streamlit UI =====
 st.title("🧠 Image-based Quiz Generator")
@@ -133,8 +136,9 @@ if uploaded_image and uploaded_template:
     final_html = render_quiz_html(quiz_data, image_urls, template_str)
 
     st.info("☁️ Uploading to AWS S3...")
-    public_url, final_filename = upload_to_s3(final_html)
-    st.success("✅ HTML uploaded to S3")
+    slug_nano, s3_key, cdn_url, display_url = generate_slug_and_urls("generated_quiz")
+    upload_to_s3(final_html, s3_key)
 
-    st.markdown(f"📎 [Open AMP Quiz Story]({public_url})", unsafe_allow_html=True)
-    st.download_button("📥 Download HTML", data=final_html, file_name=final_filename, mime="text/html")
+    st.success("✅ HTML uploaded to S3")
+    st.markdown(f"📎 [Open AMP Quiz Story]({display_url})", unsafe_allow_html=True)
+    st.download_button("📥 Download HTML", data=final_html, file_name=f"{slug_nano}.html", mime="text/html")
