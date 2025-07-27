@@ -21,17 +21,16 @@ AWS_SECRET_KEY = st.secrets["AWS_SECRET_KEY"]
 AWS_REGION     = st.secrets["AWS_REGION"]
 AWS_BUCKET     = st.secrets["AWS_BUCKET"]
 S3_PREFIX      = "suvichaarapp"
-CDN_BASE       = "https://stories.suvichaar.org"
+
+DISPLAY_BASE   = "https://suvichaar.org/stories"  # <-- for final output link
 
 # ===== 🔧 Slug and URL generator =====
-def generate_slug_and_urls(title):
-    base = ''.join(c for c in title.lower().replace(" ", "-") if c in string.ascii_lowercase + string.digits + '-')
-    slug_id = ''.join(random.choices(string.ascii_letters + string.digits + '_-', k=10)) + '_G'
-    slug_full = f"generated-quiz_{slug_id}"
+def generate_slug_and_urls():
+    nano = ''.join(random.choices(string.ascii_letters + string.digits, k=10)) + '_G'
+    slug_full = f"generated-quiz_{nano}"
     s3_key = f"{S3_PREFIX}/{slug_full}.html"
-    cdn_url = f"{CDN_BASE}/{s3_key}"
-    display_url = f"{CDN_BASE}/{S3_PREFIX}/{slug_full}"
-    return slug_full, s3_key, cdn_url, display_url
+    display_url = f"{DISPLAY_BASE}/{slug_full}.html"
+    return slug_full, s3_key, display_url
 
 # ===== 🔍 Pexels image search =====
 def search_pexels_image(query, index=0):
@@ -136,7 +135,7 @@ if uploaded_image and uploaded_template:
     final_html = render_quiz_html(quiz_data, image_urls, template_str)
 
     st.info("☁️ Uploading to AWS S3...")
-    slug_nano, s3_key, cdn_url, display_url = generate_slug_and_urls("generated_quiz")
+    slug_nano, s3_key, display_url = generate_slug_and_urls()
     upload_to_s3(final_html, s3_key)
 
     st.success("✅ HTML uploaded to S3")
