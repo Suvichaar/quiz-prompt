@@ -93,9 +93,19 @@ def render_quiz_html(data, image_urls, template_str):
     for i, q in enumerate(data.get("questions", []), start=2):
         html_data[f"s{i}image1"] = image_urls[i - 1] if i - 1 < len(image_urls) else image_urls[0]
         html_data[f"s{i}question1"] = q.get("question", f"Question {i - 1}")
+        options = q.get("options", [f"Option {k}" for k in range(1, 5)])
+        correct_index = q.get("correct_index", 0)  # default to 0 if not present
+
         for j in range(1, 5):
-            html_data[f"s{i}option{j}"] = q.get("options", [f"Option {k}" for k in range(1, 5)])[j - 1]
+            html_data[f"s{i}option{j}"] = options[j - 1]
+
+            # Add correct/confetti attributes to the correct answer, leave others blank
+            if (j - 1) == correct_index:
+                html_data[f"s{i}option{j}attr"] = f'option-{j}-correct option-{j}-confetti="📚"'
+            else:
+                html_data[f"s{i}option{j}attr"] = ""
     return template.render(**html_data)
+
 
 # ===== ☁️ Upload to S3 =====
 def upload_to_s3(content_str, s3_key):
