@@ -7,15 +7,21 @@ import streamlit as st
 from jinja2 import Template
 from tempfile import NamedTemporaryFile
 
-# ===== Azure GPT-4 Vision Setup =====
+# ===== 🔐 Secrets from st.secrets =====
 AZURE_API_KEY = st.secrets["AZURE_API_KEY"]
 AZURE_ENDPOINT = st.secrets["AZURE_ENDPOINT"]
 AZURE_DEPLOYMENT = st.secrets["AZURE_DEPLOYMENT"]
 AZURE_API_VERSION = st.secrets["AZURE_API_VERSION"]
-
-# ===== Pexels Setup =====
 PEXELS_API_KEY = st.secrets["PEXELS_API_KEY"]
 
+AWS_ACCESS_KEY = st.secrets["AWS_ACCESS_KEY"]
+AWS_SECRET_KEY = st.secrets["AWS_SECRET_KEY"]
+AWS_REGION = st.secrets["AWS_REGION"]
+AWS_BUCKET = st.secrets["AWS_BUCKET"]
+S3_PREFIX = st.secrets["S3_PREFIX"]
+CDN_BASE = st.secrets["CDN_BASE"]
+
+# ===== 🔍 Pexels image search =====
 def search_pexels_image(query, index=0):
     headers = {"Authorization": PEXELS_API_KEY}
     params = {"query": query, "per_page": index + 1, "orientation": "portrait"}
@@ -27,13 +33,11 @@ def search_pexels_image(query, index=0):
         return photos[0]["src"]["original"]
     return ""
 
+# ===== 🧠 Azure GPT-4 Vision analysis =====
 def analyze_image_with_gpt(image_bytes, context_prompt):
     image_base64 = base64.b64encode(image_bytes).decode()
     endpoint = f"{AZURE_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT}/chat/completions?api-version={AZURE_API_VERSION}"
-    headers = {
-        "api-key": AZURE_API_KEY,
-        "Content-Type": "application/json"
-    }
+    headers = {"api-key": AZURE_API_KEY, "Content-Type": "application/json"}
     messages = [
         {"role": "system", "content": [{"type": "text", "text": context_prompt}]},
         {"role": "user", "content": [
@@ -46,6 +50,7 @@ def analyze_image_with_gpt(image_bytes, context_prompt):
     result_content = res.json()["choices"][0]["message"]["content"]
     return json.loads(result_content)
 
+# ===== 🖼️ HTML generation =====
 def render_quiz_html(data, image_urls, template_str):
     template = Template(template_str)
     html_data = {
@@ -71,6 +76,20 @@ def render_quiz_html(data, image_urls, template_str):
 
     return template.render(**html_data)
 
+# ===== ☁️ Upload to S3 =====
+def upload_to_s3(content_str, filename="final_quiz.html"):
+    s3 = boto3.client("s3",
+        aws_access_key_id=AWS_ACCESS_KEY,
+        aws_secret_access_key=AWS_SECRET_KEY,
+        region_name=AWS_REGION
+    )
+    s3_key = f"{S3_PREFIX}{filename}"
+    with NamedTemporaryFile(delete=False, suffix=".html", mode="w", encoding="utf-8") as tmp:
+        tmp.write(content_str)
+        tmp.flush()
+        s3.upload_file(tmp.name, AWS_BUCKET, s3_key)
+    return f"{CDN_BASE}{s3_key}"
+
 # ===== Streamlit UI =====
 st.title("🧠 Image-based Quiz Generator")
 
@@ -92,7 +111,9 @@ if uploaded_image and uploaded_template:
     st.info("🧾 Rendering final HTML...")
     final_html = render_quiz_html(quiz_data, image_urls, template_str)
 
-    with NamedTemporaryFile(delete=False, suffix=".html", mode="w", encoding="utf-8") as tmpfile:
-        tmpfile.write(final_html)
-        st.success("✅ Quiz HTML generated!")
-        st.download_button("📥 Download HTML", data=final_html, file_name="final_quiz.html", mime="text/html")
+    st.info("☁️ Uploading to AWS S3...")
+    public_url = upload_to_s3(final_html, "generated_quiz.html")
+    st.success("✅ HTML uploaded to S3")
+
+    st.markdown(f"📎 [Open AMP Quiz Story]({public_url})", unsafe_allow_html=True)
+    st.download_button("📥 Download HTML", data=final_html, file_name="generated_quiz.html", mime="text/html")
