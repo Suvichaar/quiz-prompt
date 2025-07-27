@@ -58,11 +58,11 @@ def analyze_image_with_gpt(image_bytes, context_prompt):
     messages = [
         {"role": "system", "content": [{"type": "text", "text": context_prompt}]},
         {"role": "user", "content": [
-            {"type": "text", "text": "Generate 4 MCQ questions with 4 options each, correct_index, a title, cover_heading, cover_subtext, and result text. Return ONLY valid JSON. No extra text."},
+            {"type": "text", "text": "Generate 5 MCQ questions with 4 options each, correct_index, a title, cover_heading, cover_subtext, and result text. Return ONLY valid JSON. No extra text."},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
         ]}
     ]
-    payload = {"messages": messages, "temperature": 0.7, "max_tokens": 1500}
+    payload = {"messages": messages, "temperature": 0.7, "max_tokens": 1800}
     res = requests.post(endpoint, headers=headers, json=payload)
 
     if res.status_code != 200:
@@ -85,8 +85,8 @@ def render_quiz_html(data, image_urls, template_str):
         "pagetitle": data.get("title", "Untitled Quiz"),
         "storytitle": data.get("title", "Untitled Quiz"),
         "typeofquiz": "Auto Quiz",
-        "potraitcoverurl": image_urls[0],
-        "s1image1": image_urls[0],
+        "potraitcoverurl": image_urls[0],      # Cover
+        "s1image1": image_urls[0],             # Slide 1 (Cover)
         "s1title1": data.get("cover_heading", "Test Your Knowledge!"),
         "s1text1": data.get("cover_subtext", "Let's see how well you can guess."),
         "results_bg_image": image_urls[0],
@@ -96,6 +96,7 @@ def render_quiz_html(data, image_urls, template_str):
         "results3_image": image_urls[3], "results3_category": "Explorer", "results3_text": "You're learning fast!",
         "results4_image": image_urls[4], "results4_category": "Beginner", "results4_text": "Keep trying, you'll get there!"
     }
+    # 5 MCQ slides: s2–s6
     for i, q in enumerate(data.get("questions", []), start=2):
         html_data[f"s{i}image1"] = image_urls[i - 1] if i - 1 < len(image_urls) else image_urls[0]
         html_data[f"s{i}question1"] = q.get("question", f"Question {i - 1}")
@@ -104,7 +105,6 @@ def render_quiz_html(data, image_urls, template_str):
 
         for j in range(1, 5):
             html_data[f"s{i}option{j}"] = options[j - 1]
-
             # Add correct/confetti attributes to the correct answer, leave others blank
             if (j - 1) == correct_index:
                 html_data[f"s{i}option{j}attr"] = f'option-{j}-correct option-{j}-confetti="📚"'
@@ -131,7 +131,7 @@ uploaded_image = st.file_uploader("📤 Upload a quiz image", type=["jpg", "jpeg
 uploaded_template = st.file_uploader("📄 Upload AMP quiz template", type="html")
 
 if uploaded_image and uploaded_template:
-    context_prompt = "You are a visual quiz assistant. Generate quiz from this image with 4 questions and results."
+    context_prompt = "You are a visual quiz assistant. Generate quiz from this image with 5 questions and results."
     image_bytes = uploaded_image.read()
     template_str = uploaded_template.read().decode("utf-8")
 
