@@ -21,16 +21,13 @@ AWS_SECRET_KEY = st.secrets["AWS_SECRET_KEY"]
 AWS_REGION     = st.secrets["AWS_REGION"]
 AWS_BUCKET     = st.secrets["AWS_BUCKET"]
 S3_PREFIX      = "suvichaarstories"
-
 DISPLAY_BASE   = "https://suvichaar.org/stories"  # <-- for final output link
 
-# ===== 📚 Educational Keywords =====
 QUIZ_KEYWORDS = [
     "BOOKS", "PEN", "NOTES", "STUDY", "LIBRARY", "QUIZ", "WINNER",
     "PENCIL", "EDUCATION", "NOTEBOOK", "EXAM", "PAPER"
 ]
 
-# ===== 🔧 Slug and URL generator =====
 def generate_slug_and_urls():
     nano = ''.join(random.choices(string.ascii_letters + string.digits, k=10)) + '_G'
     slug_full = f"generated-quiz_{nano}"
@@ -38,19 +35,20 @@ def generate_slug_and_urls():
     display_url = f"{DISPLAY_BASE}/{slug_full}.html"
     return slug_full, s3_key, display_url
 
-# ===== 🔍 Pexels image search =====
 def search_pexels_image(query, index=0):
     headers = {"Authorization": PEXELS_API_KEY}
     params = {"query": query, "per_page": index + 1, "orientation": "portrait"}
-    res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=params)
-    photos = res.json().get("photos", [])
-    if len(photos) > index:
-        return photos[index]["src"]["original"]
-    elif photos:
-        return photos[0]["src"]["original"]
+    try:
+        res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=params, timeout=8)
+        photos = res.json().get("photos", [])
+        if len(photos) > index:
+            return photos[index]["src"]["original"]
+        elif photos:
+            return photos[0]["src"]["original"]
+    except Exception:
+        pass
     return "https://via.placeholder.com/720x1280?text=No+Image"
 
-# ===== 🧠 Azure GPT-4 Vision analysis =====
 def analyze_image_with_gpt(image_bytes, context_prompt):
     image_base64 = base64.b64encode(image_bytes).decode()
     endpoint = f"{AZURE_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT}/chat/completions?api-version={AZURE_API_VERSION}"
@@ -78,15 +76,14 @@ def analyze_image_with_gpt(image_bytes, context_prompt):
         st.code(res.text)
         return None
 
-# ===== 🧾 HTML rendering =====
 def render_quiz_html(data, image_urls, template_str):
     template = Template(template_str)
     html_data = {
         "pagetitle": data.get("title", "Untitled Quiz"),
         "storytitle": data.get("title", "Untitled Quiz"),
         "typeofquiz": "Auto Quiz",
-        "potraitcoverurl": image_urls[0],      # Cover
-        "s1image1": image_urls[0],             # Slide 1 (Cover)
+        "potraitcoverurl": image_urls[0],
+        "s1image1": image_urls[0],
         "s1title1": data.get("cover_heading", "Test Your Knowledge!"),
         "s1text1": data.get("cover_subtext", "Let's see how well you can guess."),
         "results_bg_image": image_urls[0],
@@ -96,23 +93,19 @@ def render_quiz_html(data, image_urls, template_str):
         "results3_image": image_urls[3], "results3_category": "Explorer", "results3_text": "You're learning fast!",
         "results4_image": image_urls[4], "results4_category": "Beginner", "results4_text": "Keep trying, you'll get there!"
     }
-    # 5 MCQ slides: s2–s6
     for i, q in enumerate(data.get("questions", []), start=2):
         html_data[f"s{i}image1"] = image_urls[i - 1] if i - 1 < len(image_urls) else image_urls[0]
         html_data[f"s{i}question1"] = q.get("question", f"Question {i - 1}")
         options = q.get("options", [f"Option {k}" for k in range(1, 5)])
-        correct_index = q.get("correct_index", 0)  # default to 0 if not present
-
+        correct_index = q.get("correct_index", 0)
         for j in range(1, 5):
             html_data[f"s{i}option{j}"] = options[j - 1]
-            # Add correct/confetti attributes to the correct answer, leave others blank
             if (j - 1) == correct_index:
                 html_data[f"s{i}option{j}attr"] = f'option-{j}-correct option-{j}-confetti="📚"'
             else:
                 html_data[f"s{i}option{j}attr"] = ""
     return template.render(**html_data)
 
-# ===== ☁️ Upload to S3 =====
 def upload_to_s3(content_str, s3_key):
     s3 = boto3.client("s3",
         aws_access_key_id=AWS_ACCESS_KEY,
@@ -143,8 +136,6 @@ if uploaded_image and uploaded_template:
     st.json(quiz_data)
 
     st.info("🖼️ Fetching images from Pexels using educational keywords...")
-
-    # Always select 5 unique keywords randomly for images
     selected_keywords = random.sample(QUIZ_KEYWORDS, k=5)
     st.write("🔑 Image keywords selected:", selected_keywords)
     image_urls = [search_pexels_image(keyword, 0) for keyword in selected_keywords]
