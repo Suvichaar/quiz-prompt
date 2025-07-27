@@ -89,7 +89,7 @@ def render_quiz_html(data, image_urls, template_str):
     return template.render(**html_data)
 
 # ===== ☁️ Upload to S3 with timestamped filename =====
-def upload_to_s3(content_str, folder="webstory-html"):
+def upload_to_s3(content_str, folder="suvichaarapp"):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"generated_quiz_{timestamp}.html"
     s3_key = f"{folder}/{filename}"
