@@ -20,7 +20,7 @@ AWS_ACCESS_KEY = st.secrets["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY = st.secrets["AWS_SECRET_KEY"]
 AWS_REGION     = st.secrets["AWS_REGION"]
 
-# ✅ CDN + S3 Config
+# ✅ Updated bucket and CDN info
 AWS_BUCKET     = "suvichaarapp"
 S3_PREFIX      = ""  # upload to root
 DISPLAY_BASE   = "https://cdn.suvichaar.org"
@@ -34,7 +34,7 @@ def generate_slug_and_urls():
     nano = ''.join(random.choices(string.ascii_letters + string.digits, k=10)) + '_G'
     slug_full = f"generated-quiz_{nano}"
     s3_key = f"{slug_full}.html"
-    display_url = f"{DISPLAY_BASE}/{slug_full}"  # ✅ no .html in public-facing URL
+    display_url = f"{DISPLAY_BASE}/{slug_full}.html"
     return slug_full, s3_key, display_url
 
 def search_pexels_image(query, index=0):
