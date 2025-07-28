@@ -8,9 +8,8 @@ import boto3
 import streamlit as st
 from jinja2 import Template
 from tempfile import NamedTemporaryFile
-import streamlit.components.v1 as components
 
-# ===== 🔐 Secrets from st.secrets or hardcoded config =====
+# ===== 🔐 Secrets from st.secrets =====
 AZURE_API_KEY     = st.secrets["AZURE_API_KEY"]
 AZURE_ENDPOINT    = st.secrets["AZURE_ENDPOINT"]
 AZURE_DEPLOYMENT  = st.secrets["AZURE_DEPLOYMENT"]
@@ -25,7 +24,8 @@ AWS_BUCKET     = "suvichaarapp"
 S3_PREFIX      = ""
 DISPLAY_BASE   = "https://cdn.suvichaar.org"
 
-# === Helper to generate unique file slug and URLs ===
+# ===== Helper Functions =====
+
 def generate_slug_and_urls():
     nano = ''.join(random.choices(string.ascii_letters + string.digits, k=10)) + '_G'
     slug_full = f"generated-quiz_{nano}"
@@ -33,35 +33,6 @@ def generate_slug_and_urls():
     display_url = f"{DISPLAY_BASE}/{slug_full}.html"
     return slug_full, s3_key, display_url
 
-# === Extract quiz JSON using GPT-4 Vision ===
-def analyze_image_with_gpt(image_bytes, context_prompt):
-    image_base64 = base64.b64encode(image_bytes).decode()
-    endpoint = f"{AZURE_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT}/chat/completions?api-version={AZURE_API_VERSION}"
-    headers = {"api-key": AZURE_API_KEY, "Content-Type": "application/json"}
-    messages = [
-        {"role": "system", "content": [{"type": "text", "text": context_prompt}]},
-        {"role": "user", "content": [
-            {"type": "text", "text": "Generate 5 MCQ questions with 4 options each, correct_index, a title, cover_heading, cover_subtext, and result text. Return ONLY valid JSON. No extra text."},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
-        ]}
-    ]
-    payload = {"messages": messages, "temperature": 0.7, "max_tokens": 1800}
-    res = requests.post(endpoint, headers=headers, json=payload)
-
-    if res.status_code != 200:
-        st.error(f"❌ Azure API Error {res.status_code}")
-        st.text(res.text)
-        return None
-
-    try:
-        content = res.json()["choices"][0]["message"]["content"]
-        return json.loads(content)
-    except Exception:
-        st.error("❌ Failed to parse GPT response as JSON.")
-        st.code(res.text)
-        return None
-
-# === Extract a keyword from image using GPT-4 ===
 def extract_focus_keyword_from_image(image_bytes):
     image_base64 = base64.b64encode(image_bytes).decode()
     endpoint = f"{AZURE_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT}/chat/completions?api-version={AZURE_API_VERSION}"
@@ -69,28 +40,46 @@ def extract_focus_keyword_from_image(image_bytes):
     messages = [
         {"role": "system", "content": [{"type": "text", "text": "You are a helpful assistant that extracts the most relevant keyword for a quiz from an image."}]},
         {"role": "user", "content": [
-            {"type": "text", "text": "Extract a single lowercase educational keyword (e.g., 'books', 'exam', 'paper', 'notes', etc.) that best represents this image. Return only the keyword as a plain JSON string like this: {\"keyword\": \"books\"}"},
+            {"type": "text", "text": "Extract a single lowercase educational keyword (e.g., 'books', 'exam', 'paper', 'notes') that best represents this image. Return as: {\"keyword\": \"your_keyword\"}"},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
         ]}
     ]
     payload = {"messages": messages, "temperature": 0.2, "max_tokens": 300}
     res = requests.post(endpoint, headers=headers, json=payload)
-
     if res.status_code != 200:
         st.error(f"❌ Azure API Error {res.status_code}")
-        st.text(res.text)
         return "quiz"
-
     try:
         content = res.json()["choices"][0]["message"]["content"]
         keyword_data = json.loads(content)
         return keyword_data.get("keyword", "quiz")
-    except Exception:
-        st.error("❌ Failed to parse GPT response for keyword.")
-        st.code(res.text)
+    except:
+        st.error("❌ Failed to parse keyword from GPT")
         return "quiz"
 
-# === Fetch image from Pexels ===
+def analyze_image_with_gpt(image_bytes, context_prompt):
+    image_base64 = base64.b64encode(image_bytes).decode()
+    endpoint = f"{AZURE_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT}/chat/completions?api-version={AZURE_API_VERSION}"
+    headers = {"api-key": AZURE_API_KEY, "Content-Type": "application/json"}
+    messages = [
+        {"role": "system", "content": [{"type": "text", "text": context_prompt}]},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Generate 5 MCQ questions with 4 options, correct_index, a title, cover_heading, cover_subtext, and result text. Return ONLY valid JSON. No extra text."},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+        ]}
+    ]
+    payload = {"messages": messages, "temperature": 0.7, "max_tokens": 1800}
+    res = requests.post(endpoint, headers=headers, json=payload)
+    if res.status_code != 200:
+        st.error(f"❌ Azure API Error {res.status_code}")
+        return None
+    try:
+        content = res.json()["choices"][0]["message"]["content"]
+        return json.loads(content)
+    except:
+        st.error("❌ Failed to parse quiz JSON from GPT.")
+        return None
+
 def search_pexels_image(query, index=0):
     headers = {"Authorization": PEXELS_API_KEY}
     params = {"query": query, "per_page": index + 1, "orientation": "portrait"}
@@ -101,11 +90,10 @@ def search_pexels_image(query, index=0):
             return photos[index]["src"]["original"]
         elif photos:
             return photos[0]["src"]["original"]
-    except Exception:
+    except:
         pass
     return "https://via.placeholder.com/720x1280?text=No+Image"
 
-# === HTML Renderer ===
 def render_quiz_html(data, image_urls, template_str):
     template = Template(template_str)
     html_data = {
@@ -136,7 +124,6 @@ def render_quiz_html(data, image_urls, template_str):
                 html_data[f"s{i}option{j}attr"] = ""
     return template.render(**html_data)
 
-# === Upload HTML to S3 ===
 def upload_to_s3(content_str, s3_key):
     s3 = boto3.client("s3",
         aws_access_key_id=AWS_ACCESS_KEY,
@@ -158,34 +145,28 @@ if uploaded_image and uploaded_template:
     image_bytes = uploaded_image.read()
     template_str = uploaded_template.read().decode("utf-8")
 
-    # 1. Extract Keyword
     st.info("🔍 Extracting a focus keyword from the image...")
     focus_keyword = extract_focus_keyword_from_image(image_bytes)
     st.success(f"🎯 Focus keyword detected: **{focus_keyword}**")
 
-    # 2. Generate Quiz JSON
+    st.info("🧠 Generating quiz from image...")
     context_prompt = "You are a visual quiz assistant. Generate quiz from this image with 5 questions and results."
-    st.info("🧠 Analyzing image with GPT-4 Vision...")
     quiz_data = analyze_image_with_gpt(image_bytes, context_prompt)
     if not quiz_data:
         st.stop()
     st.json(quiz_data)
 
-    # 3. Fetch Images from Pexels
-    st.info("🖼️ Fetching 5 Pexels images based on keyword...")
+    st.info("📷 Fetching 5 Pexels images using the keyword...")
     image_urls = [search_pexels_image(focus_keyword, i) for i in range(5)]
-    st.image(image_urls, caption="Quiz Slide Images", width=200)
+    st.image(image_urls, caption=[f"Slide {i+1}" for i in range(5)], width=200)
 
-    # 4. Render HTML
-    st.info("🧾 Rendering final HTML...")
+    st.info("🧾 Rendering HTML...")
     final_html = render_quiz_html(quiz_data, image_urls, template_str)
 
-    # 5. Upload to S3
-    st.info("☁️ Uploading to AWS S3...")
-    slug_nano, s3_key, display_url = generate_slug_and_urls()
+    st.info("☁️ Uploading HTML to AWS S3...")
+    slug, s3_key, display_url = generate_slug_and_urls()
     upload_to_s3(final_html, s3_key)
 
-    # 6. Display Output
-    st.success("✅ HTML uploaded to S3")
-    st.markdown(f"🔗 [View Live Quiz]({display_url})")
-    st.download_button("📥 Download HTML", data=final_html, file_name=f"{slug_nano}.html", mime="text/html")
+    st.success("✅ Quiz uploaded successfully!")
+    st.markdown(f"🔗 [Click to View Quiz]({display_url})")
+    st.download_button("📥 Download HTML", data=final_html, file_name=f"{slug}.html", mime="text/html")
