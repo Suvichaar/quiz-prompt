@@ -148,7 +148,12 @@ if uploaded_image and uploaded_template:
             aws_secret_access_key=AWS_SECRET_KEY,
             region_name=AWS_REGION
         )
-        s3.put_object(Bucket=AWS_BUCKET, Key=cover_key, Body=cover_bytes, ContentType='image/jpeg', ACL='public-read')
+        s3.put_object(
+            Bucket=AWS_BUCKET,
+            Key=cover_key,
+            Body=cover_bytes,
+            ContentType='image/jpeg'  # ✅ NO ACL
+        )
         cover_url = f"{DISPLAY_BASE}/{cover_key}"
     else:
         cover_url = image_urls[0]
