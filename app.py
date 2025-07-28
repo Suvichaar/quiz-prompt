@@ -154,7 +154,7 @@ if uploaded_image and uploaded_template:
             Body=cover_bytes,
             ContentType='image/jpeg'  # ✅ NO ACL
         )
-        cover_url = f"{DISPLAY_BASE}/{cover_key}"
+        cover_url = f"https://cdn.suvichaar.org/{cover_key}"
     else:
         cover_url = image_urls[0]
 
