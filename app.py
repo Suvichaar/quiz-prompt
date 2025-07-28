@@ -8,6 +8,7 @@ import boto3
 import streamlit as st
 from jinja2 import Template
 from tempfile import NamedTemporaryFile
+import streamlit.components.v1 as components
 
 # ===== 🔐 Secrets from st.secrets or hardcoded config =====
 AZURE_API_KEY     = st.secrets["AZURE_API_KEY"]
@@ -155,4 +156,10 @@ if uploaded_image and uploaded_template:
 
     st.success("✅ HTML uploaded to S3")
     st.write(f"Your Live Stories URL:{display_url}")
+    # Display as live iframe viewer
+    st.subheader("🌐 Live Story Viewer")
+    iframe_code = f"""
+    <iframe src="{display_url}" width="100%" height="800px" frameborder="0" allowfullscreen></iframe>
+    """
+    components.html(iframe_code, height=820)
     st.download_button("📥 Download HTML", data=final_html, file_name=f"{slug_nano}.html", mime="text/html")
