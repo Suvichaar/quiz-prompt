@@ -121,7 +121,6 @@ def upload_to_s3(content_str, s3_key):
             tmp.name,
             AWS_BUCKET,
             s3_key,
-            ExtraArgs={'ACL': 'public-read'}  # required if public access is not via CloudFront
         )
 
 # ===== Streamlit UI =====
