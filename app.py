@@ -157,10 +157,4 @@ if uploaded_image and uploaded_template:
     st.success("✅ HTML uploaded to S3")
     st.write(f"Your Live Stories URL:{display_url}")
     # Display as live iframe viewer
-    dis = display_url.removesuffix(".html")
-    st.subheader("🌐 Live Story Viewer")
-    iframe_code = f"""
-    <iframe src="{dis}" width="100%" height="800px" frameborder="0" allowfullscreen></iframe>
-    """
-    components.html(iframe_code, height=820)
     st.download_button("📥 Download HTML", data=final_html, file_name=f"{slug_nano}.html", mime="text/html")
