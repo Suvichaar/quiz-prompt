@@ -154,5 +154,5 @@ if uploaded_image and uploaded_template:
     upload_to_s3(final_html, s3_key)
 
     st.success("✅ HTML uploaded to S3")
-    st.markdown(f"📎 [Open AMP Quiz Story]({display_url})", unsafe_allow_html=True)
+    st.write(f"Your Live Stories URL:{display_url})
     st.download_button("📥 Download HTML", data=final_html, file_name=f"{slug_nano}.html", mime="text/html")
