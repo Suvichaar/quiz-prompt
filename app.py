@@ -18,6 +18,7 @@ AWS_ACCESS_KEY    = st.secrets["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY    = st.secrets["AWS_SECRET_KEY"]
 AWS_REGION        = st.secrets["AWS_REGION"]
 AWS_BUCKET        = st.secrets["AWS_BUCKET"]
+DAALE_KEY         = st.secrets["DAALE_KEY"]
 S3_PREFIX         = "suvichaarstories"
 DISPLAY_BASE      = "https://suvichaar.org/stories"
 
@@ -31,8 +32,8 @@ def generate_slug_and_urls():
 
 # === Image generation via Azure DALL·E ===
 def generate_dalle_images(prompt, n=6):
-    url = f"{AZURE_ENDPOINT}/openai/deployments/dall-e-3/images/generations?api-version={AZURE_API_VERSION}"
-    headers = {"Content-Type": "application/json", "api-key": AZURE_API_KEY}
+    url = "https://njnam-m3jxkka3-swedencentral.cognitiveservices.azure.com/openai/deployments/dall-e-3/images/generations?api-version=2024-02-01"
+    headers = {"Content-Type": "application/json", "api-key": DAALE_KEY}
     image_urls = []
     for i in range(n):
         payload = {"prompt": prompt, "n": 1, "size": "1024x1024"}
