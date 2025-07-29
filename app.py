@@ -29,41 +29,48 @@ def generate_slug_and_urls():
     display_url = f"{DISPLAY_BASE}/{slug_full}.html"
     return slug_full, s3_key, display_url
 
-# === Image generation via Azure DALL·E ===
+# === Image generation via Azure DALL·E (1 image per call)
 def generate_dalle_images(prompt, n=5):
     url = f"{AZURE_ENDPOINT}/openai/deployments/dall-e-3/images/generations?api-version={AZURE_API_VERSION}"
     headers = {
         "Content-Type": "application/json",
         "api-key": AZURE_API_KEY,
     }
-    payload = {
-        "prompt": prompt,
-        "n": n,
-        "size": "1024x1024"
-    }
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=20)
-        if response.status_code == 200:
-            data = response.json()
-            image_urls = [img["url"] for img in data.get("data", [])]
-            while len(image_urls) < n:
-                image_urls.append(image_urls[0])
-            return image_urls[:n]
-        else:
-            st.error(f"DALL·E Error: {response.status_code} - {response.text}")
-    except Exception as e:
-        st.error(f"DALL·E Exception: {e}")
-    return ["https://via.placeholder.com/720x1280?text=No+Image"] * n
+    image_urls = []
+
+    for _ in range(n):
+        payload = {
+            "prompt": prompt,
+            "n": 1,
+            "size": "1024x1024"
+        }
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                image_url = data.get("data", [{}])[0].get("url", "")
+                if image_url:
+                    image_urls.append(image_url)
+                else:
+                    image_urls.append("https://via.placeholder.com/720x1280?text=No+Image")
+            else:
+                st.error(f"DALL·E Error: {response.status_code} - {response.text}")
+                image_urls.append("https://via.placeholder.com/720x1280?text=No+Image")
+        except Exception as e:
+            st.error(f"DALL·E Exception: {e}")
+            image_urls.append("https://via.placeholder.com/720x1280?text=No+Image")
+    
+    return image_urls
 
 # === GPT-generated MCQs ===
-def analyze_keyword_with_gpt(keyword, context_prompt, n=5):
+def analyze_keyword_with_gpt(keyword, context_prompt, n=4):
     endpoint = f"{AZURE_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT}/chat/completions?api-version={AZURE_API_VERSION}"
     headers = {"api-key": AZURE_API_KEY, "Content-Type": "application/json"}
     messages = [
         {"role": "system", "content": [{"type": "text", "text": context_prompt}]},
         {"role": "user", "content": [
             {"type": "text", "text":
-                f"Using the topic: '{keyword}', generate 5 different MCQ questions (suitable for a quiz) with 4 options each, correct_index for each, and return only valid JSON like: "
+                f"Using the topic: '{keyword}', generate 4 different MCQ questions (suitable for a quiz) with 4 options each, correct_index for each, and return only valid JSON like: "
                 "{{'questions': [{{'question': ..., 'options': [...], 'correct_index': ...}}, ...]}}. No extra text."}
         ]}
     ]
@@ -132,7 +139,7 @@ def upload_to_s3(content_str, s3_key):
         s3.upload_file(tmp.name, AWS_BUCKET, s3_key)
 
 # === Streamlit UI ===
-st.title("🧠 AI Quiz Generator with DALL·E Images (5 MCQs)")
+st.title("🧠 AI Quiz Generator with DALL·E Images (4 MCQs)")
 
 quiz_topic = st.text_input("Quiz Keyword / Topic", value="EDUCATION")
 uploaded_template = st.file_uploader("📄 Upload AMP quiz template", type="html")
@@ -144,13 +151,13 @@ if uploaded_template and quiz_topic.strip():
     cover_subtext = st.text_input("Cover Subtext:", value="Let's see how well you can guess.")
     results_text = st.text_input("Results Text:", value="You've completed the quiz!")
 
-    context_prompt = "You are a quiz MCQ generator. For the given keyword/topic, create 5 meaningful, unique MCQs."
+    context_prompt = "You are a quiz MCQ generator. For the given keyword/topic, create 4 meaningful, unique MCQs."
 
     st.info("🎯 Generating quiz questions using GPT...")
-    questions = analyze_keyword_with_gpt(quiz_topic, context_prompt, n=5)
+    questions = analyze_keyword_with_gpt(quiz_topic, context_prompt, n=4)
 
     st.info("🖼️ Generating images using DALL·E...")
-    image_urls = generate_dalle_images(quiz_topic, n=5)
+    image_urls = generate_dalle_images(quiz_topic, n=5)  # 1 cover + 4 result slides
 
     quiz_data = {
         "title": quiz_title,
