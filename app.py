@@ -2,6 +2,7 @@ import os
 import json
 import random
 import string
+import time
 import requests
 import boto3
 import streamlit as st
@@ -29,7 +30,7 @@ def generate_slug_and_urls():
     display_url = f"{DISPLAY_BASE}/{slug_full}.html"
     return slug_full, s3_key, display_url
 
-# === Image generation via Azure DALL·E (1 image per call)
+# === Image generation via Azure DALL·E (1 image per call with retry + delay)
 def generate_dalle_images(prompt, n=5):
     url = f"{AZURE_ENDPOINT}/openai/deployments/dall-e-3/images/generations?api-version={AZURE_API_VERSION}"
     headers = {
@@ -38,28 +39,35 @@ def generate_dalle_images(prompt, n=5):
     }
     image_urls = []
 
-    for _ in range(n):
+    for i in range(n):
         payload = {
             "prompt": prompt,
             "n": 1,
             "size": "1024x1024"
         }
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
-            if response.status_code == 200:
-                data = response.json()
-                image_url = data.get("data", [{}])[0].get("url", "")
-                if image_url:
-                    image_urls.append(image_url)
+        success = False
+        for attempt in range(3):
+            try:
+                response = requests.post(url, headers=headers, json=payload, timeout=30)
+                if response.status_code == 200:
+                    data = response.json()
+                    image_url = data.get("data", [{}])[0].get("url", "")
+                    image_urls.append(image_url or "https://via.placeholder.com/720x1280?text=No+Image")
+                    success = True
+                    break
+                elif response.status_code == 429:
+                    wait_time = 10
+                    st.warning(f"Rate limit hit. Waiting {wait_time} seconds before retrying image {i+1}/{n}...")
+                    time.sleep(wait_time)
                 else:
-                    image_urls.append("https://via.placeholder.com/720x1280?text=No+Image")
-            else:
-                st.error(f"DALL·E Error: {response.status_code} - {response.text}")
-                image_urls.append("https://via.placeholder.com/720x1280?text=No+Image")
-        except Exception as e:
-            st.error(f"DALL·E Exception: {e}")
+                    st.error(f"DALL·E Error: {response.status_code} - {response.text}")
+                    break
+            except Exception as e:
+                st.error(f"DALL·E Exception: {e}")
+        if not success:
             image_urls.append("https://via.placeholder.com/720x1280?text=No+Image")
-    
+        time.sleep(3)  # small delay to prevent hitting the rate limit
+
     return image_urls
 
 # === GPT-generated MCQs ===
@@ -71,7 +79,7 @@ def analyze_keyword_with_gpt(keyword, context_prompt, n=4):
         {"role": "user", "content": [
             {"type": "text", "text":
                 f"Using the topic: '{keyword}', generate 4 different MCQ questions (suitable for a quiz) with 4 options each, correct_index for each, and return only valid JSON like: "
-                "{{'questions': [{{'question': ..., 'options': [...], 'correct_index': ...}}, ...]}}. No extra text."}
+                "{'questions': [{'question': ..., 'options': [...], 'correct_index': ...}, ...]}. No extra text."}
         ]}
     ]
     payload = {"messages": messages, "temperature": 0.7, "max_tokens": 1400}
@@ -139,7 +147,7 @@ def upload_to_s3(content_str, s3_key):
         s3.upload_file(tmp.name, AWS_BUCKET, s3_key)
 
 # === Streamlit UI ===
-st.title("🧠 AI Quiz Generator with DALL·E Images (4 MCQs)")
+st.title("🧐 AI Quiz Generator with DALL·E Images (4 MCQs)")
 
 quiz_topic = st.text_input("Quiz Keyword / Topic", value="EDUCATION")
 uploaded_template = st.file_uploader("📄 Upload AMP quiz template", type="html")
@@ -177,5 +185,5 @@ if uploaded_template and quiz_topic.strip():
     upload_to_s3(final_html, s3_key)
 
     st.success("✅ HTML uploaded to S3")
-    st.markdown(f"📎 [Open AMP Quiz Story]({display_url})", unsafe_allow_html=True)
-    st.download_button("📥 Download HTML", data=final_html, file_name=f"{slug_nano}.html", mime="text/html")
+    st.markdown(f"💎 [Open AMP Quiz Story]({display_url})", unsafe_allow_html=True)
+    st.download_button("📅 Download HTML", data=final_html, file_name=f"{slug_nano}.html", mime="text/html")
