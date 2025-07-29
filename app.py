@@ -30,7 +30,7 @@ def generate_slug_and_urls():
     return slug_full, s3_key, display_url
 
 # === Image generation via Azure DALL·E ===
-def generate_dalle_images(prompt, n=5):
+def generate_dalle_images(prompt, n=6):
     url = f"{AZURE_ENDPOINT}/openai/deployments/dall-e-3/images/generations?api-version={AZURE_API_VERSION}"
     headers = {"Content-Type": "application/json", "api-key": AZURE_API_KEY}
     image_urls = []
@@ -85,7 +85,7 @@ def render_quiz_html(data, image_urls, template_str):
         "s1image1": image_urls[0],
         "s1title1": data.get("cover_heading", "Test Your Knowledge!"),
         "s1text1": data.get("cover_subtext", "Let's see how well you can guess."),
-        "results_bg_image": image_urls[0],
+        "results_bg_image": image_urls[5],
         "results_prompt_text": data.get("results_text", "You've completed the quiz!"),
         "results1_image": image_urls[1], "results1_category": "Expert", "results1_text": "Incredible! You're a quiz master.",
         "results2_image": image_urls[2], "results2_category": "Smart Thinker", "results2_text": "Nice! You did well.",
@@ -133,7 +133,7 @@ if uploaded_template and quiz_topic.strip():
     questions = analyze_keyword_with_gpt(quiz_topic, context_prompt, n=4)
 
     st.info("🖼️ Generating images...")
-    image_urls = generate_dalle_images(quiz_topic, n=5)
+    image_urls = generate_dalle_images(quiz_topic, n=6)
 
     quiz_data = {
         "title": quiz_title,
