@@ -81,7 +81,7 @@ Respond strictly in this JSON format:
 
 # ========== 🎨 Image Generation ==========
 def generate_and_upload_images(result, slug):
-    dalle_url = f"https://njnam-m3jxkka3-swedencentral.cognitiveservices.azure.com/openai/deployments/dall-e-3/images/generations?api-version=2024-02-01"
+    dalle_url = "https://njnam-m3jxkka3-swedencentral.cognitiveservices.azure.com/openai/deployments/dall-e-3/images/generations?api-version=2024-02-01"
     headers = {"Content-Type": "application/json", "api-key": DAALE_KEY}
     s3 = boto3.client("s3", aws_access_key_id=AWS_ACCESS_KEY, aws_secret_access_key=AWS_SECRET_KEY, region_name=AWS_REGION)
 
