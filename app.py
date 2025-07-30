@@ -111,15 +111,14 @@ def generate_and_upload_images(result, slug):
         else:
             result[f"s{i}image1"] = DEFAULT_ERROR_IMAGE
 
-    # Portrait version of s1
     try:
         if result["s1image1"] != DEFAULT_ERROR_IMAGE:
             img_data = requests.get(result["s1image1"]).content
             img = Image.open(BytesIO(img_data)).convert("RGB")
             img = img.resize((640, 853))
             buffer = BytesIO()
-            buffer.seek(0)
             img.save(buffer, format="JPEG")
+            buffer.seek(0)
             key = f"{S3_PREFIX}/{slug}/portrait_cover.jpg"
             s3.upload_fileobj(buffer, AWS_BUCKET, key)
             result["potraitcoverurl"] = f"{DISPLAY_BASE}/{key}"
@@ -172,13 +171,11 @@ image_file = st.file_uploader("Upload Notes Image (JPG or PNG)", type=["jpg", "j
 html_template = st.file_uploader("Upload HTML Template (with {{placeholders}})", type=["html"])
 
 if image_file and html_template and st.button("🚀 Generate Story"):
-    # Read image and convert to base64
-    image = Image.open(image_file)
-    st.image(image, caption="Uploaded Image", use_column_width=True)
     img_bytes = image_file.read()
+    image = Image.open(BytesIO(img_bytes))
+    st.image(image, caption="Uploaded Image", use_column_width=True)
     base64_img = base64.b64encode(img_bytes).decode("utf-8")
 
-    # Vision Analysis
     result = analyze_image(base64_img)
     if result:
         nano, slug_nano, display_url, _ = generate_slug_and_urls(result["storytitle"])
@@ -187,7 +184,6 @@ if image_file and html_template and st.button("🚀 Generate Story"):
         result["metadescription"] = meta_desc
         result["metakeywords"] = meta_keywords
 
-        # Final HTML
         html_template_str = html_template.read().decode("utf-8")
         html_filled = fill_placeholders_from_html(html_template_str, result)
         html_filled = html_filled.replace("{{canurl}}", display_url)
@@ -201,4 +197,3 @@ if image_file and html_template and st.button("🚀 Generate Story"):
 
         st.success("🎉 Story generated successfully!")
         st.markdown(f"🌐 [Preview Web Story]({display_url})")
-
